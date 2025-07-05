@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>MQTT电机控制</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+<body>
+    <button onclick="sendCommand('forward')">前进</button>
+    <button onclick="sendCommand('backward')">后退</button>
+    <button onclick="sendCommand('left')">左转</button>
+    <button onclick="sendCommand('right')">右转</button>
+    <button onclick="sendCommand('stop')">停止</button>
+    <script>
+        const client = mqtt.connect('ws://192.168.0.108:9001/mqtt'); // WebSocket端口
+        client.on('connect', () => {
+            console.log("MQTT Connected!");
+        });
+
+        function sendCommand(cmd) {
+            client.publish('esp32/motor', cmd); // 发布到ESP32订阅的主题
+        }
+    </script>
+</body>
+</html>

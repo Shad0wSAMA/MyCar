@@ -1,0 +1,70 @@
+#include <Arduino.h>
+// Motor A 控制引脚（GPIO）
+const int AIA = 5;
+const int AIB = 17;
+
+// Motor B 控制引脚（GPIO）
+const int BIA = 4;
+const int BIB = 16;
+
+// PWM 参数
+const int freq = 1000;       // 频率
+const int resolution = 8;    // 8 位分辨率（0~255）
+
+void setup() {
+  Serial.begin(115200);
+  // 设置 PWM 通道
+  Serial.println("Setup");
+  ledcSetup(0, freq, resolution);  // 通道 0 -> GPIO 5
+  ledcAttachPin(AIA, 0);
+
+  ledcSetup(1, freq, resolution);  // 通道 1 -> GPIO 17
+  ledcAttachPin(AIB, 1);
+
+  ledcSetup(2, freq, resolution);  // 通道 2 -> GPIO 4
+  ledcAttachPin(BIA, 2);
+
+  ledcSetup(3, freq, resolution);  // 通道 3 -> GPIO 16
+  ledcAttachPin(BIB, 3);
+  Serial.println("Setup Complete");
+}
+
+void loop() {
+  Serial.println("Forward");
+  // Motor A 正转：AIA PWM，AIB LOW
+  ledcWrite(0, 200);  // GPIO 5 -> PWM
+  ledcWrite(1, 0);    // GPIO 17 -> LOW
+
+  // Motor B 正转：BIA PWM，BIB LOW
+  ledcWrite(2, 200);  // GPIO 4 -> PWM
+  ledcWrite(3, 0);    // GPIO 16 -> LOW
+
+  delay(3000);
+
+  // 停止所有电机
+  Serial.println("Stop");
+  ledcWrite(0, 0);
+  ledcWrite(1, 0);
+  ledcWrite(2, 0);
+  ledcWrite(3, 0);
+  delay(1000);
+
+  // Motor A 反转：AIA LOW，AIB PWM
+  Serial.println("Backward");
+  ledcWrite(0, 0);
+  ledcWrite(1, 150);
+
+  // Motor B 反转：BIA LOW，BIB PWM
+  ledcWrite(2, 0);
+  ledcWrite(3, 150);
+
+  delay(3000);
+
+  // 停止
+  Serial.println("Stop");
+  ledcWrite(0, 0);
+  ledcWrite(1, 0);
+  ledcWrite(2, 0);
+  ledcWrite(3, 0);
+  delay(1000);
+}

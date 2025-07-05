@@ -1,0 +1,128 @@
+#include <WiFi.h>
+#include <WebServer.h>
+
+// 电机引脚定义
+#define M1_POW  5
+#define M1_DIR  17
+#define M2_POW  16
+#define M2_DIR  4
+
+// WiFi 配置
+const char* ssid = "Test1";
+const char* password = "12345678";
+
+WebServer server(80);  // 创建一个Web服务器，端口80
+
+// 网页HTML内容
+const char* htmlPage = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ESP32 电机控制器</title>
+    <style>
+        body { font-family: Arial; text-align: center; }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>ESP32 电机控制</h1>
+    <button onclick="sendCommand('forward')">前进</button><br>
+    <button onclick="sendCommand('backward')">后退</button><br>
+    <button onclick="sendCommand('left')">左转</button><br>
+    <button onclick="sendCommand('right')">右转</button><br>
+    <button onclick="sendCommand('stop')">停止</button><br>
+    <script>
+        function sendCommand(cmd) {
+            fetch(`/control?cmd=${cmd}`)
+                .then(response => console.log(`Command sent: ${cmd}`))
+                .catch(err => console.error('Error:', err));
+        }
+    </script>
+</body>
+</html>
+)rawliteral";
+
+// 控制电机
+void controlMotor(String command) {
+    if (command == "forward") {
+        digitalWrite(M1_DIR, HIGH);
+        digitalWrite(M2_DIR, HIGH);
+        analogWrite(M1_POW, 200);  // PWM 速度控制（0-255）
+        analogWrite(M2_POW, 200);
+    } else if (command == "backward") {
+        digitalWrite(M1_DIR, LOW);
+        digitalWrite(M2_DIR, LOW);
+        analogWrite(M1_POW, 200);
+        analogWrite(M2_POW, 200);
+    } else if (command == "left") {
+        digitalWrite(M1_DIR, LOW);
+        digitalWrite(M2_DIR, HIGH);
+        analogWrite(M1_POW, 150);
+        analogWrite(M2_POW, 150);
+    } else if (command == "right") {
+        digitalWrite(M1_DIR, HIGH);
+        digitalWrite(M2_DIR, LOW);
+        analogWrite(M1_POW, 150);
+        analogWrite(M2_POW, 150);
+    } else if (command == "stop") {
+        analogWrite(M1_POW, 0);
+        analogWrite(M2_POW, 0);
+    }
+}
+
+// 处理根路径请求（返回HTML页面）
+void handleRoot() {
+    server.send(200, "text/html", htmlPage);
+}
+
+// 处理控制命令
+void handleControl() {
+    if (server.hasArg("cmd")) {
+        String command = server.arg("cmd");
+        controlMotor(command);
+        server.send(200, "text/plain", "OK: " + command);
+        Serial.println(command);
+    } else {
+        server.send(400, "text/plain", "Bad Request");
+    }
+}
+
+void setup() {
+    // 初始化电机引脚
+    pinMode(M1_POW, OUTPUT);
+    pinMode(M1_DIR, OUTPUT);
+    pinMode(M2_POW, OUTPUT);
+    pinMode(M2_DIR, OUTPUT);
+
+    // 初始化串口
+    Serial.begin(115200);
+
+    // 连接WiFi
+    WiFi.begin(ssid, password);
+    Serial.print("Connecting to WiFi...");
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\nWiFi Connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+
+    // 设置服务器路由
+    server.on("/", handleRoot);          // 主页（HTML控制页面）
+    server.on("/control", handleControl); // 控制接口
+
+    // 启动服务器
+    server.begin();
+    Serial.println("HTTP Server Started");
+}
+
+void loop() {
+    server.handleClient();  // 处理客户端请求
+}

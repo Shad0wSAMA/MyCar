@@ -1,0 +1,140 @@
+#include <Arduino.h>
+#include <Wire.h>
+#include <WiFi.h>
+#include <MPU9250_asukiaaa.h>
+#include <ESPAsyncWebServer.h>
+
+MPU9250_asukiaaa mySensor;
+AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
+
+const char* ssid = "Test1";
+const char* password = "12345678";
+
+float current_angle = 0;
+int last_gz = 0;
+unsigned long last_time = 0;
+
+const char HTML_PAGE[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>虚拟罗盘</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 40px; }
+    canvas { border: 1px solid black; }
+  </style>
+</head>
+<body>
+  <h1>ESP32 虚拟罗盘</h1>
+  <canvas id="compass" width="200" height="200"></canvas>
+  <p>角度: <span id="angle">0</span>°</p>
+
+  <button onclick="calibrate()">校准为0°</button> <!-- 👈 增加按钮 -->
+
+  <script>
+    const canvas = document.getElementById('compass');
+    const ctx = canvas.getContext('2d');
+    const angleLabel = document.getElementById('angle');
+
+    function drawCompass(angle) {
+      ctx.clearRect(0, 0, 200, 200);
+      ctx.save();
+      ctx.translate(100, 100);
+      ctx.rotate(angle * Math.PI / 180);
+      ctx.beginPath();
+      ctx.moveTo(0, -80);
+      ctx.lineTo(0, 10);
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+
+    ws.onmessage = (event) => {
+      const angle = parseFloat(event.data) % 360;
+      angleLabel.textContent = angle.toFixed(1);
+      drawCompass(angle);
+    };
+
+    function calibrate() {
+      // 👇 向 ESP32 发送校准指令
+      ws.send("CALIBRATE");
+    }
+  </script>
+</body>
+</html>
+)rawliteral";
+
+void notifyClients() {
+  String msg = String(current_angle);
+  ws.textAll(msg);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+  mySensor.setWire(&Wire);
+  mySensor.beginGyro();
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected. IP: " + WiFi.localIP().toString());
+
+  // WebSocket处理器
+  ws.onEvent([](AsyncWebSocket * server, AsyncWebSocketClient * client,
+                AwsEventType type, void * arg, uint8_t *data, size_t len) {
+    if (type == WS_EVT_DATA) {
+      AwsFrameInfo* info = (AwsFrameInfo*)arg;
+      if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+        String msg;
+        for (size_t i = 0; i < len; i++) {
+          msg += (char)data[i];
+        }
+        msg.trim();
+        if (msg == "CALIBRATE") {
+          current_angle = 0;
+          Serial.println("🔧 校准请求已处理，角度归零");
+        }
+      }
+    }
+  });
+  server.addHandler(&ws);
+
+  // 静态网页
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", HTML_PAGE);
+  });
+
+  server.begin();
+}
+
+void loop() {
+  static unsigned long gyro_interval = 10;
+  static unsigned long last_update = 0;
+  static unsigned long web_update_interval = 100;
+  if (millis() - last_time >= gyro_interval) {
+    last_time = millis();
+
+    mySensor.gyroUpdate();
+    float gz = mySensor.gyroZ() + 1.5;
+    gz = 0.2 * last_gz + 0.8 * gz;
+    last_gz = gz;
+    if (abs(gz) < 0.1) gz = 0;
+    current_angle += gyro_interval * gz / 1000.0;
+  }
+    if (millis() - last_update >= web_update_interval){
+      last_update = millis();
+      notifyClients();
+    }
+}
+
+
+
+
